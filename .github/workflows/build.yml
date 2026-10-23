@@ -71,14 +71,52 @@ jobs:
           $frameworks = (Get-Content $config -Raw | ConvertFrom-Json).runtimeOptions.includedFrameworks
           $runtimeVersion = ($frameworks | Where-Object name -EQ 'Microsoft.NETCore.App').version
           $desktopVersion = ($frameworks | Where-Object name -EQ 'Microsoft.WindowsDesktop.App').version
-          if (-not $runtimeVersion -or -not $desktopVersion) { throw 'Runtime versions missing from build output' }
+          $aspnetVersion = ($frameworks | Where-Object name -EQ 'Microsoft.AspNetCore.App').version
+          if (-not $runtimeVersion -or -not $desktopVersion -or -not $aspnetVersion) { throw 'Runtime versions missing from build output' }
           $runtimePackage = "$env:NUGET_PACKAGES/microsoft.netcore.app.runtime.$env:RUNTIME/$runtimeVersion"
           $desktopPackage = "$env:NUGET_PACKAGES/microsoft.windowsdesktop.app.runtime.$env:RUNTIME/$desktopVersion"
+          $aspnetPackage = "$env:NUGET_PACKAGES/microsoft.aspnetcore.app.runtime.$env:RUNTIME/$aspnetVersion"
           $notices = New-Item -ItemType Directory -Path "$output/licenses/dotnet"
           Copy-Item "$runtimePackage/LICENSE.TXT", "$runtimePackage/THIRD-PARTY-NOTICES.TXT" -Destination $notices
           Copy-Item "$desktopPackage/LICENSE" -Destination "$notices/WPF-LICENSE.TXT"
           Invoke-WebRequest "https://raw.githubusercontent.com/dotnet/wpf/v$desktopVersion/THIRD-PARTY-NOTICES.TXT" `
             -OutFile "$notices/WPF-THIRD-PARTY-NOTICES.TXT"
+          Copy-Item "$aspnetPackage/LICENSE.txt" -Destination "$notices/ASPNETCORE-LICENSE.TXT"
+          Copy-Item "$aspnetPackage/THIRD-PARTY-NOTICES.TXT" -Destination "$notices/ASPNETCORE-THIRD-PARTY-NOTICES.TXT"
+
+          $sourceFiles = @{
+            'https://github.com/modelcontextprotocol/csharp-sdk' = @('LICENSE', 'THIRD-PARTY-NOTICES.txt')
+            'https://github.com/dotnet/extensions' = @('LICENSE', 'THIRD-PARTY-NOTICES.TXT')
+            'https://github.com/dotnet/dotnet' = @('LICENSE.TXT')
+          }
+          $collected = @{}
+          $deps = "src/BnetManager/bin/Release/net10.0-windows/$env:RUNTIME/BnetManager.deps.json"
+          $libraries = (Get-Content $deps -Raw | ConvertFrom-Json).libraries.PSObject.Properties
+          foreach ($dependency in ($libraries | Where-Object { $_.Value.type -eq 'package' })) {
+            $id = $dependency.Name.Split('/')[0].ToLowerInvariant()
+            $package = Join-Path $env:NUGET_PACKAGES $dependency.Value.path
+            $metadata = ([xml](Get-Content "$package/$id.nuspec" -Raw)).package.metadata
+            $repository = [string]$metadata.repository.url
+            $commit = [string]$metadata.repository.commit
+            if (-not $sourceFiles.ContainsKey($repository) -or $commit -notmatch '^[0-9a-f]{40}$') {
+              throw "Unconfigured license source for $($dependency.Name)"
+            }
+            $key = "$repository/$commit"
+            if (-not $collected.ContainsKey($key)) {
+              $repositoryName = $repository.Substring('https://github.com/'.Length)
+              $directory = New-Item -ItemType Directory -Path "$output/licenses/packages/$($repositoryName.Replace('/', '-'))-$commit"
+              foreach ($file in $sourceFiles[$repository]) {
+                Invoke-WebRequest "https://raw.githubusercontent.com/$repositoryName/$commit/$file" `
+                  -OutFile "$directory/$file"
+              }
+              $collected[$key] = $directory
+            }
+            $directory = $collected[$key]
+            "$($dependency.Name): $($metadata.copyright)" | Add-Content "$directory/COPYRIGHTS.TXT" -Encoding utf8
+            foreach ($file in (Get-ChildItem $package -File | Where-Object { $_.Name -match '^(LICENSE|NOTICE|THIRD-PARTY-NOTICES)(\..*)?$' })) {
+              Copy-Item $file.FullName -Destination "$directory/$id-$($file.Name)"
+            }
+          }
 
           Compress-Archive -Path "$output/*" -DestinationPath "artifacts/$name.zip"
           "name=$name" >> $env:GITHUB_OUTPUT

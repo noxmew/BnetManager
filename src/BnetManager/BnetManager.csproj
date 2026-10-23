@@ -8,11 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>BnetManager</AssemblyName>
     <RootNamespace>BnetManager</RootNamespace>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/App.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <Resource Include="Assets/App.ico" />
   </ItemGroup>

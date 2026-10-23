@@ -5,6 +5,7 @@ artifacts/
 *.user
 *.suo
 accounts.json
+mcp.json
 accounts.json.*.tmp
 *.session
 *.session.*.tmp

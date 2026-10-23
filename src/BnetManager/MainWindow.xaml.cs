@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using BnetManager.Controls;
 using BnetManager.Core;
+using BnetManager.Mcp;
 
 namespace BnetManager;
 
@@ -14,7 +15,10 @@ public partial class MainWindow : ModernWindow
 {
     private readonly AccountManager manager;
     private readonly DispatcherTimer clientTimer;
+    private readonly McpService mcp;
+    private readonly CancellationTokenSource serviceLifetime = new();
     private bool busy;
+    private bool closeAfterStop;
 
     public static readonly DependencyProperty IsClientRunningProperty = DependencyProperty.Register(
         nameof(IsClientRunning), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
@@ -28,6 +32,7 @@ public partial class MainWindow : ModernWindow
     {
         InitializeComponent();
         manager = new();
+        mcp = new(this, manager.Store.Root);
         RefreshView();
         if (manager.Catalog.LauncherPath == null)
             SetStatus("请在客户端设置中选择战网启动程序。");
@@ -45,11 +50,12 @@ public partial class MainWindow : ModernWindow
         AccountsList.SelectedItem = accounts.FirstOrDefault(a => a.Id == selectedId);
         AccountCount.Text = accounts.Count.ToString();
         EmptyState.Visibility = accounts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AccountsList.IsEnabled = !busy && !manager.NeedsRecovery;
-        LoginActions.IsEnabled = !busy && !manager.NeedsRecovery;
-        EmptyState.IsEnabled = !busy && !manager.NeedsRecovery;
-        SettingsButton.IsEnabled = !busy;
+        AccountsList.IsEnabled = !busy && !manager.NeedsRecovery && !shuttingDown;
+        LoginActions.IsEnabled = !busy && !manager.NeedsRecovery && !shuttingDown;
+        EmptyState.IsEnabled = !busy && !manager.NeedsRecovery && !shuttingDown;
+        SettingsButton.IsEnabled = !busy && !shuttingDown;
         RefreshClientState();
+        RefreshMcpAccounts();
     }
 
     private void RefreshClientState()
@@ -67,7 +73,14 @@ public partial class MainWindow : ModernWindow
 
     private async Task PerformAsync(Func<IProgress<string>, Task> action, string success)
     {
-        if (busy) return;
+        if (busy || shuttingDown) return;
+        try { await ExecuteOperationAsync(action, success); }
+        catch (Exception error) { MessageDialog.Show(this, "操作未完成", error.Message); }
+    }
+
+    private async Task ExecuteOperationAsync(Func<IProgress<string>, Task> action, string success)
+    {
+        if (busy || shuttingDown) throw new InvalidOperationException("程序正在处理其他操作，请稍候。");
         busy = true;
         RefreshView();
         OperationProgress.Visibility = Visibility.Visible;
@@ -80,7 +93,7 @@ public partial class MainWindow : ModernWindow
         catch (Exception error)
         {
             SetStatus(error.Message, error: true);
-            MessageDialog.Show(this, "操作未完成", error.Message);
+            throw;
         }
         finally
         {
@@ -92,6 +105,7 @@ public partial class MainWindow : ModernWindow
 
     private void UiAction(Action action)
     {
+        if (shuttingDown) return;
         try { action(); }
         catch (Exception error) { SetStatus(error.Message, error: true); MessageDialog.Show(this, "操作未完成", error.Message); }
     }
@@ -180,18 +194,38 @@ public partial class MainWindow : ModernWindow
     {
         if (manager.NeedsRecovery)
             await PerformAsync(p => manager.RepairInterruptedSwitchAsync(p), "");
+        if (mcp.Configuration.Enabled && !shuttingDown)
+        {
+            try { await mcp.ConfigureAsync(true, mcp.Configuration.Port, serviceLifetime.Token); }
+            catch (Exception error) when (!shuttingDown) { SetStatus($"MCP 服务启动失败：{error.Message}", error: true); }
+            catch (Exception) when (shuttingDown) { }
+        }
     }
 
     private void SettingsClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new SettingsDialog(manager.Catalog.LauncherPath, manager.Store.Root) { Owner = this };
+        if (shuttingDown) return;
+        var dialog = new SettingsDialog(manager.Catalog.LauncherPath, manager.Store.Root, mcp, serviceLifetime.Token) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         UiAction(() => { manager.SetLauncher(dialog.LauncherPath); SetStatus("战网客户端路径已保存。"); });
     }
 
-    private void WindowClosing(object? sender, CancelEventArgs e)
+    private async void WindowClosing(object? sender, CancelEventArgs e)
     {
+        if (closeAfterStop) return;
         if (busy) { e.Cancel = true; SetStatus("正在处理登录状态，请稍候。"); return; }
+        e.Cancel = true;
+        if (shuttingDown) return;
+        shuttingDown = true;
+        RefreshView();
         clientTimer?.Stop();
+        _ = serviceLifetime.CancelAsync();
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            await mcp.StopAsync(timeout.Token);
+        }
+        catch (Exception error) { SetStatus($"MCP 服务停止失败：{error.Message}", error: true); }
+        finally { closeAfterStop = true; _ = Dispatcher.BeginInvoke(new Action(Close)); }
     }
 }

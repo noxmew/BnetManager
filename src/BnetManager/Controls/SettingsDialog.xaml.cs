@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Windows;
 using BnetManager.Core;
+using BnetManager.Mcp;
 using Microsoft.Win32;
 
 namespace BnetManager.Controls;
@@ -11,14 +12,64 @@ public partial class SettingsDialog : ModernWindow
     private readonly string dataRoot;
     private CancellationTokenSource? updateCancellation;
     private Uri? updatePage;
+    private readonly McpService mcp;
+    private readonly CancellationToken serviceLifetime;
+    private bool closed;
     public string LauncherPath => LauncherInput.Text.Trim();
 
-    public SettingsDialog(string? launcher, string dataRoot)
+    public SettingsDialog(string? launcher, string dataRoot, McpService mcp, CancellationToken serviceLifetime)
     {
         InitializeComponent();
+        MaxHeight = SystemParameters.WorkArea.Height - 32;
         LauncherInput.Text = launcher ?? "";
         this.dataRoot = dataRoot;
+        this.mcp = mcp;
+        this.serviceLifetime = serviceLifetime;
         VersionText.Text = $"v{UpdateChecker.CurrentVersionText}";
+        mcp.Changed += RefreshMcpControls;
+        RefreshMcpControls();
+    }
+
+    private void RefreshMcpControls()
+    {
+        if (closed) return;
+        if (!Dispatcher.CheckAccess()) { Dispatcher.InvokeAsync(RefreshMcpControls); return; }
+        McpStateText.Text = mcp.IsChanging ? "正在更新服务…" : mcp.IsRunning ? "运行中 · 仅本机访问" : mcp.Configuration.Enabled ? "未启动" : "未开启";
+        McpToggleButton.Content = mcp.Configuration.Enabled ? "关闭服务" : "开启服务";
+        McpToggleButton.IsEnabled = !mcp.IsChanging;
+        McpRetryButton.Visibility = mcp.Configuration.Enabled && !mcp.IsRunning && !mcp.IsChanging ? Visibility.Visible : Visibility.Collapsed;
+        McpPortInput.Text = mcp.Configuration.Port.ToString();
+        McpPortInput.IsEnabled = !mcp.IsRunning && !mcp.IsChanging;
+        McpCopyButton.IsEnabled = mcp.IsRunning && !mcp.IsChanging;
+        McpEndpointText.Text = mcp.Configuration.Endpoint;
+        McpErrorText.Text = mcp.LastError ?? "";
+    }
+
+    private async void McpToggleClick(object sender, RoutedEventArgs e) => await ConfigureMcpAsync(!mcp.Configuration.Enabled);
+
+    private async void McpRetryClick(object sender, RoutedEventArgs e) => await ConfigureMcpAsync(true);
+
+    private async Task ConfigureMcpAsync(bool enabled)
+    {
+        if (mcp.IsChanging) return;
+        if (!int.TryParse(McpPortInput.Text, out var port) || port is < 1024 or > 65535)
+        {
+            McpErrorText.Text = "端口需要在 1024～65535 之间。";
+            return;
+        }
+        try { await mcp.ConfigureAsync(enabled, port, serviceLifetime); }
+        catch (Exception error) { if (!closed) McpErrorText.Text = error.Message; }
+    }
+
+    private void McpCopyClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(mcp.Configuration.ConnectionJson());
+            McpErrorText.Text = "";
+            McpStateText.Text = "连接配置已复制";
+        }
+        catch (Exception) { McpErrorText.Text = "无法复制，请稍后重试。"; }
     }
 
     private async void CheckUpdateClick(object sender, RoutedEventArgs e)
@@ -64,6 +115,8 @@ public partial class SettingsDialog : ModernWindow
 
     protected override void OnClosed(EventArgs e)
     {
+        closed = true;
+        mcp.Changed -= RefreshMcpControls;
         updateCancellation?.Cancel();
         base.OnClosed(e);
     }
