@@ -1,6 +1,4 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using BnetManager.Core;
@@ -64,27 +62,12 @@ public sealed class McpServerHost(IMcpAccountGateway gateway)
 
                 var app = builder.Build();
                 var expectedHost = $"127.0.0.1:{configuration.Port}";
-                var expectedToken = Encoding.ASCII.GetBytes(configuration.AccessToken);
                 app.Use(async (context, next) =>
                 {
                     if (!string.Equals(context.Request.Host.Value, expectedHost, StringComparison.Ordinal)
                         || context.Request.Headers.ContainsKey("Origin"))
                     {
                         context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        return;
-                    }
-
-                    var authorization = context.Request.Headers.Authorization;
-                    const string bearerPrefix = "Bearer ";
-                    if (authorization.Count != 1
-                        || authorization[0] is not { } value
-                        || !value.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
-                        || value.Length != bearerPrefix.Length + expectedToken.Length
-                        || !CryptographicOperations.FixedTimeEquals(
-                            Encoding.ASCII.GetBytes(value[bearerPrefix.Length..]), expectedToken))
-                    {
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                        context.Response.Headers.WWWAuthenticate = "Bearer";
                         return;
                     }
 

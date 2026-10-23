@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>BnetManager</AssemblyName>
     <RootNamespace>BnetManager</RootNamespace>
-    <Version>0.1.4</Version>
+    <Version>0.1.5</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/App.ico</ApplicationIcon>
   </PropertyGroup>
