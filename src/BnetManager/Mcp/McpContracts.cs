@@ -18,6 +18,6 @@ public interface IMcpAccountGateway
     Task<McpActionResult> LoginNewAccountAsync(BattleRegion region, CancellationToken cancellationToken);
     Task<McpActionResult> SaveCurrentAccountAsync(string name, string battleTag, BattleRegion region, CancellationToken cancellationToken);
     Task<McpActionResult> RefreshAccountSessionAsync(string accountId, CancellationToken cancellationToken);
-    Task<McpActionResult> EditAccountAsync(string accountId, string name, string battleTag, CancellationToken cancellationToken);
+    Task<McpActionResult> EditAccountAsync(string accountId, string name, string? battleTag, CancellationToken cancellationToken);
     Task<McpActionResult> RemoveAccountAsync(string accountId, CancellationToken cancellationToken);
 }

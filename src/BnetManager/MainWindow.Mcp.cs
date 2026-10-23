@@ -27,15 +27,15 @@ public partial class MainWindow : IMcpAccountGateway
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (shuttingDown || Dispatcher.HasShutdownStarted)
-                throw new InvalidOperationException("BnetManager 正在退出，请稍后重新连接。");
+                throw new OperationBusyException("BnetManager 正在退出，请稍后重新连接。");
             return await action();
         }, DispatcherPriority.Normal, cancellationToken).Task.Unwrap();
     }
 
     private void EnsureMcpMutationReady()
     {
-        if (busy) throw new InvalidOperationException("另一个账号操作正在进行，请稍候。");
-        if (OwnedWindows.Count > 0) throw new InvalidOperationException("BnetManager 有窗口正在等待操作，请先关闭该窗口。");
+        if (busy) throw new OperationBusyException("另一个账号操作正在进行，请稍候。");
+        if (OwnedWindows.Count > 0) throw new OperationBusyException("BnetManager 有窗口正在等待操作，请先关闭该窗口。");
         if (manager.NeedsRecovery)
             throw new InvalidOperationException("上次操作没有完成。请关闭游戏和战网后重新打开 BnetManager。");
     }
@@ -110,11 +110,12 @@ public partial class MainWindow : IMcpAccountGateway
             return new McpActionResult(true, message);
         }, cancellationToken);
 
-    public Task<McpActionResult> EditAccountAsync(string accountId, string name, string battleTag,
+    public Task<McpActionResult> EditAccountAsync(string accountId, string name, string? battleTag,
         CancellationToken cancellationToken) => InvokeMcpAsync(async () =>
         {
             EnsureMcpMutationReady();
             var account = FindMcpAccount(accountId);
+            battleTag ??= account.BattleTag;
             ValidateMcpProfile(name, battleTag);
             const string message = "账号信息已保存。";
             await ExecuteOperationAsync(_ =>

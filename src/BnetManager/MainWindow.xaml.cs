@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using BnetManager.Controls;
 using BnetManager.Core;
 using BnetManager.Mcp;
+using BnetManager.Cli;
 
 namespace BnetManager;
 
@@ -16,6 +17,7 @@ public partial class MainWindow : ModernWindow
     private readonly AccountManager manager;
     private readonly DispatcherTimer clientTimer;
     private readonly McpService mcp;
+    private readonly CliPipeServer cli;
     private readonly CancellationTokenSource serviceLifetime = new();
     private bool busy;
     private bool closeAfterStop;
@@ -34,6 +36,8 @@ public partial class MainWindow : ModernWindow
         manager = new();
         mcp = new(this, manager.Store.Root);
         RefreshView();
+        cli = new(this);
+        cli.Start();
         if (manager.Catalog.LauncherPath == null)
             SetStatus("请在客户端设置中选择战网启动程序。");
         clientTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
@@ -80,7 +84,7 @@ public partial class MainWindow : ModernWindow
 
     private async Task ExecuteOperationAsync(Func<IProgress<string>, Task> action, string success)
     {
-        if (busy || shuttingDown) throw new InvalidOperationException("程序正在处理其他操作，请稍候。");
+        if (busy || shuttingDown) throw new OperationBusyException("程序正在处理其他操作，请稍候。");
         busy = true;
         RefreshView();
         OperationProgress.Visibility = Visibility.Visible;
@@ -223,9 +227,9 @@ public partial class MainWindow : ModernWindow
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-            await mcp.StopAsync(timeout.Token);
+            await Task.WhenAll(mcp.StopAsync(timeout.Token), cli.StopAsync(timeout.Token));
         }
-        catch (Exception error) { SetStatus($"MCP 服务停止失败：{error.Message}", error: true); }
+        catch (Exception error) { SetStatus($"后台服务停止失败：{error.Message}", error: true); }
         finally { closeAfterStop = true; _ = Dispatcher.BeginInvoke(new Action(Close)); }
     }
 }

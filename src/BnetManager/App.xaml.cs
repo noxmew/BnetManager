@@ -1,5 +1,6 @@
 using System.Windows;
 using BnetManager.Controls;
+using BnetManager.Core;
 
 namespace BnetManager;
 
@@ -10,10 +11,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BnetManager");
-        Directory.CreateDirectory(root);
-        try { instanceLock = new FileStream(Path.Combine(root, "instance.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33)
+        instanceLock = InstanceLease.TryAcquire();
+        if (instanceLock is null)
         {
             MessageDialog.Show(null, "BnetManager", "BnetManager 已在运行，请切回已有窗口。");
             Shutdown();
