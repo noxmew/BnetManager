@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using BnetManager.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -56,7 +57,10 @@ public sealed class McpServerHost(IMcpAccountGateway gateway)
                     };
                 })
                     .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
-                    .WithTools(new BnetMcpTools(gateway), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    .WithTools(new BnetMcpTools(gateway), new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                    {
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+                    });
 
                 var app = builder.Build();
                 var expectedHost = $"127.0.0.1:{configuration.Port}";
