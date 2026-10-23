@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -35,6 +36,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $project = 'src/BnetManager/BnetManager.csproj'
           $version = ([xml](Get-Content $project -Raw)).Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match project version v$version"
+          }
           $name = "BnetManager-$version-$env:RUNTIME"
           $output = Join-Path 'artifacts' $name
           dotnet publish $project -c Release -r $env:RUNTIME --self-contained true `
@@ -42,10 +46,29 @@ jobs:
             -p:EnableCompressionInSingleFile=true -p:DebugType=None -o $output
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
 
-          $readme = Get-Content 'README.md' -Raw
-          $license = [regex]::Match($readme, '(?s)<!-- MIT-LICENSE-BEGIN -->\s*(.*?)\s*<!-- MIT-LICENSE-END -->')
-          if (-not $license.Success) { throw 'MIT license missing from README' }
-          Set-Content "$output/LICENSE.txt" -Value $license.Groups[1].Value -Encoding utf8
+          @'
+          MIT License
+
+          Copyright (c) 2026 BnetManager contributors
+
+          Permission is hereby granted, free of charge, to any person obtaining a copy
+          of this software and associated documentation files (the "Software"), to deal
+          in the Software without restriction, including without limitation the rights
+          to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+          copies of the Software, and to permit persons to whom the Software is
+          furnished to do so, subject to the following conditions:
+
+          The above copyright notice and this permission notice shall be included in all
+          copies or substantial portions of the Software.
+
+          THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+          IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+          FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+          AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+          LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+          OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+          SOFTWARE.
+          '@ | Set-Content "$output/LICENSE.txt" -Encoding utf8
 
           $config = "src/BnetManager/bin/Release/net10.0-windows/$env:RUNTIME/BnetManager.runtimeconfig.json"
           $frameworks = (Get-Content $config -Raw | ConvertFrom-Json).runtimeOptions.includedFrameworks
@@ -67,3 +90,28 @@ jobs:
           name: ${{ steps.package.outputs.name }}
           path: artifacts/${{ steps.package.outputs.name }}.zip
           if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: BnetManager-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          printf '%s\n\n%s\n' \
+            'Windows 战网多账号切换工具，提供国服、亚服、美服和欧服登录入口。' \
+            '适用于 Windows 11；x64 已验证，ARM64 未实机验证。' \
+            > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$RELEASE_TAG" artifacts/*.zip --verify-tag \
+            --title "BnetManager $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

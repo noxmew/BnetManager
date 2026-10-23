@@ -4,6 +4,8 @@
 
 Windows 战网多账号切换工具，保存各账号的本地登录状态，切换后自动启动官方战网。
 
+[下载最新版本](https://github.com/noxmew/BnetManager/releases/latest)
+
 ![主界面，账号名称为演示信息](docs/images/main-window.png)
 
 ## 功能
@@ -36,37 +38,4 @@ Windows 战网多账号切换工具，保存各账号的本地登录状态，切
 dotnet build src/BnetManager/BnetManager.csproj -c Release
 ```
 
-仓库仅有一个 GitHub Actions 工作流：推送到 `main`、提交 PR 或手动触发时，自动生成 Windows x64 和 ARM64 自包含压缩包，可在对应运行的 Artifacts 中下载，无需单独安装 .NET。ARM64 尚未完成实机验证。
-
-## 许可
-
-MIT。自包含压缩包会自动附带依赖的许可文件。
-
-<details>
-<summary>MIT License</summary>
-
-<!-- MIT-LICENSE-BEGIN -->
-MIT License
-
-Copyright (c) 2026 BnetManager contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-<!-- MIT-LICENSE-END -->
-
-</details>
+仓库的 GitHub Actions 工作流会自动构建 Windows x64 和 ARM64 自包含压缩包，无需单独安装 .NET。推送与项目版本一致的 `v*` 标签时，自动发布到 [Releases](https://github.com/noxmew/BnetManager/releases)。ARM64 尚未完成实机验证。
