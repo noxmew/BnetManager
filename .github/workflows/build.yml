@@ -1,0 +1,69 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    strategy:
+      matrix:
+        runtime: [win-x64, win-arm64]
+    env:
+      RUNTIME: ${{ matrix.runtime }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish and package
+        id: package
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/nuget-packages
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = 'src/BnetManager/BnetManager.csproj'
+          $version = ([xml](Get-Content $project -Raw)).Project.PropertyGroup.Version
+          $name = "BnetManager-$version-$env:RUNTIME"
+          $output = Join-Path 'artifacts' $name
+          dotnet publish $project -c Release -r $env:RUNTIME --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:DebugType=None -o $output
+          if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
+
+          $readme = Get-Content 'README.md' -Raw
+          $license = [regex]::Match($readme, '(?s)<!-- MIT-LICENSE-BEGIN -->\s*(.*?)\s*<!-- MIT-LICENSE-END -->')
+          if (-not $license.Success) { throw 'MIT license missing from README' }
+          Set-Content "$output/LICENSE.txt" -Value $license.Groups[1].Value -Encoding utf8
+
+          $config = "src/BnetManager/bin/Release/net10.0-windows/$env:RUNTIME/BnetManager.runtimeconfig.json"
+          $frameworks = (Get-Content $config -Raw | ConvertFrom-Json).runtimeOptions.includedFrameworks
+          $runtimeVersion = ($frameworks | Where-Object name -EQ 'Microsoft.NETCore.App').version
+          $desktopVersion = ($frameworks | Where-Object name -EQ 'Microsoft.WindowsDesktop.App').version
+          if (-not $runtimeVersion -or -not $desktopVersion) { throw 'Runtime versions missing from build output' }
+          $runtimePackage = "$env:NUGET_PACKAGES/microsoft.netcore.app.runtime.$env:RUNTIME/$runtimeVersion"
+          $desktopPackage = "$env:NUGET_PACKAGES/microsoft.windowsdesktop.app.runtime.$env:RUNTIME/$desktopVersion"
+          $notices = New-Item -ItemType Directory -Path "$output/licenses/dotnet"
+          Copy-Item "$runtimePackage/LICENSE.TXT", "$runtimePackage/THIRD-PARTY-NOTICES.TXT" -Destination $notices
+          Copy-Item "$desktopPackage/LICENSE" -Destination "$notices/WPF-LICENSE.TXT"
+          Invoke-WebRequest "https://raw.githubusercontent.com/dotnet/wpf/v$desktopVersion/THIRD-PARTY-NOTICES.TXT" `
+            -OutFile "$notices/WPF-THIRD-PARTY-NOTICES.TXT"
+
+          Compress-Archive -Path "$output/*" -DestinationPath "artifacts/$name.zip"
+          "name=$name" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: artifacts/${{ steps.package.outputs.name }}.zip
+          if-no-files-found: error

@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.vs/
+artifacts/
+*.user
+*.suo
+accounts.json
+accounts.json.*.tmp
+*.session
+*.session.*.tmp
+instance.lock
