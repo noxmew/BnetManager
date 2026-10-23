@@ -13,11 +13,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-2025
-    strategy:
-      matrix:
-        runtime: [win-x64, win-arm64]
     env:
-      RUNTIME: ${{ matrix.runtime }}
+      RUNTIME: win-x64
     defaults:
       run:
         shell: pwsh
@@ -100,7 +97,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: BnetManager-*
+          pattern: BnetManager-*-win-x64
           path: artifacts
           merge-multiple: true
       - name: Publish release
@@ -111,7 +108,7 @@ jobs:
         run: |
           printf '%s\n\n%s\n' \
             'Windows 战网多账号切换工具，提供国服、亚服、美服和欧服登录入口。' \
-            '适用于 Windows 11；x64 已验证，ARM64 未实机验证。' \
+            '适用于 Windows 11 x64（AMD64）。' \
             > "$RUNNER_TEMP/release-notes.md"
-          gh release create "$RELEASE_TAG" artifacts/*.zip --verify-tag \
+          gh release create "$RELEASE_TAG" artifacts/*-win-x64.zip --verify-tag \
             --title "BnetManager $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
